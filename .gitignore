@@ -1,0 +1,26 @@
+# dependencias
+node_modules/
+functions/node_modules/
+
+# builds
+dist/
+functions/lib/
+.vite/
+.vercel/
+
+# firebase
+.firebase/
+.firebaserc.local
+firebase-debug.log
+functions/.runtimeconfig.json
+
+# entorno local (NO subir)
+.env
+.env.local
+.env.*.local
+
+# editor/OS
+.DS_Store
+Thumbs.db
+*.log
+

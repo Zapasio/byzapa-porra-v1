@@ -1,0 +1,16 @@
+// REGLAS FINALES (seguras, como las que pegaste)
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() { return request.auth != null; }
+    function isAdmin() { return isSignedIn() && request.auth.token.admin == true; }
+
+    match /picks/{id}        { allow read: if isSignedIn(); allow write: if false; }
+    match /users/{uid}       { allow read: if isSignedIn(); allow write: if isSignedIn() && request.auth.uid == uid; }
+    match /teams/{id}        { allow read: if true; allow write: if isAdmin(); }
+    match /matchdays/{id}    { allow read: if true; allow write: if isAdmin(); }
+    match /matches/{id}      { allow read: if true; allow write: if isAdmin(); }
+    match /seasons/{id}      { allow read: if true; allow write: if isAdmin(); }
+    match /leaderboards/{id} { allow read: if true; allow write: if isAdmin(); }
+  }
+}

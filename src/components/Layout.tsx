@@ -11,11 +11,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <nav className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-4">
           <Link to="/" className="text-emerald-400 font-extrabold tracking-tight">ByZapa Porra</Link>
           <span className="text-sm opacity-70">LaLiga 2025/26</span>
-          <div className="ml-auto flex items-center gap-4 text-sm">
+          <div className="ml-auto flex items-center gap-3 text-sm">
+            {claims?.admin && <span className="text-xs px-2 py-1 rounded bg-emerald-700/40 border border-emerald-500/30">admin</span>}
             <Link to="/picks" className="hover:text-emerald-400">Picks</Link>
             <Link to="/standings" className="hover:text-emerald-400">Clasificación</Link>
             <Link to="/admin" className="hover:text-emerald-400">Admin</Link>
-            {user && <button onClick={() => signOut(auth)} className="rounded px-2 py-1 bg-slate-800 hover:bg-slate-700">Salir</button>}
+            {user && (
+              <button onClick={() => signOut(auth)} className="rounded px-2 py-1 bg-slate-800 hover:bg-slate-700">
+                Salir
+              </button>
+            )}
           </div>
         </nav>
       </header>

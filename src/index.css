@@ -1,12 +1,11 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* Aquí puedes añadir estilos globales opcionales */
-body {
-  @apply bg-gray-50 text-gray-900 font-sans;
-}
-
-h1, h2, h3, h4, h5, h6 {
-  @apply font-heading;
-}
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+};

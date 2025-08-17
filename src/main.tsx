@@ -2,7 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import "./index.css";   // 👈 Importa Tailwind aquí
-
+import './userCreate';
 import PicksPage from "./pages/PicksPage";
 import MyHistoryPage from "./pages/MyHistoryPage";
 import LoginPage from "./pages/LoginPage";

@@ -1,50 +1,41 @@
-import { useEffect, useState } from 'react'
-import { auth, db } from '../firebase'
-import { collection, getDocs } from 'firebase/firestore'
-import { submitPickFn } from '../lib/functions'
-import { useAppConfig } from '../lib/config'
+import { useEffect, useState } from "react";
+import { submitPickFn } from "../lib/functions";
+import { auth } from "../firebase";
 
 export default function PicksPage() {
-  const { seasonId, matchdayNumber } = useAppConfig()
-  const [teams, setTeams] = useState<any[]>([])
-  const [teamId, setTeamId] = useState('')
-  const [sending, setSending] = useState(false)
+  const [userEmail, setUserEmail] = useState("");
+  const [pickStatus, setPickStatus] = useState("esperando");
 
   useEffect(() => {
-    getDocs(collection(db, 'teams')).then(s => setTeams(s.docs.map(d => ({ id: d.id, ...d.data() }))))
-  }, [])
-
-  const send = async () => {
-    if (!auth.currentUser) return alert('Inicia sesión')
-    if (!teamId) return
-    setSending(true)
-    try {
-      await submitPickFn({ seasonId, matchdayNumber, teamId: teamId.trim().toLowerCase() })
-      alert('Pick enviado ✅')
-    } catch (e: any) {
-      alert(e.message || e.code)
-    } finally {
-      setSending(false)
+    const u = auth.currentUser;
+    if (u && u.email) {
+      setUserEmail(u.email);
     }
-  }
+  }, []);
+
+  const handleSubmitPick = async () => {
+    try {
+      const result = await submitPickFn({
+        teamId: "RMA", // ejemplo
+        matchdayId: "2025-26__1"
+      });
+
+      console.log("Respuesta:", result);
+      setPickStatus("enviado");
+    } catch (error: any) {
+      console.error("Error al enviar pick:", error.message);
+      setPickStatus("error");
+    }
+  };
 
   return (
-    <section className="grid gap-4">
-      <h1 className="text-2xl font-bold">Mi pick — Jornada {matchdayNumber}</h1>
-      <div className="rounded-xl border border-white/5 bg-slate-900 p-4 flex flex-col sm:flex-row gap-3 items-center">
-        <select className="bg-slate-800 p-2 rounded w-full sm:w-80" value={teamId} onChange={e => setTeamId(e.target.value)}>
-          <option value="">-- Elige equipo --</option>
-          {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
-        <button
-          className="rounded-lg px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
-          disabled={!teamId || sending}
-          onClick={send}
-        >
-          {sending ? 'Enviando...' : 'Enviar'}
-        </button>
-      </div>
-      <p className="text-xs opacity-60">Recuerda: no puedes repetir equipo durante la temporada.</p>
+    <section style={{ padding: "2rem" }}>
+      <h1>ByZapa Porra: Selección de Equipo</h1>
+      <p>Usuario: {userEmail || "no identificado"}</p>
+      <p>Estado del pick: {pickStatus}</p>
+      <button onClick={handleSubmitPick} className="bg-blue-600 text-white px-4 py-2 rounded mt-4 hover:bg-blue-500">
+        Enviar Pick
+      </button>
     </section>
-  )
+  );
 }

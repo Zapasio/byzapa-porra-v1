@@ -1,0 +1,16 @@
+# Ignora node_modules (se instala dentro del contenedor)
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Ignora el build anterior
+dist
+
+# Archivos de configuración del sistema
+.DS_Store
+.env
+*.local
+
+# Ignora la carpeta de Git
+.git
+.gitignore

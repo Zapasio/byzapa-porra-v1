@@ -1,0 +1,18 @@
+[
+  {
+    "jornada": 1,
+    "partidos": [
+      { "local": "Real Madrid", "visitante": "Real Betis" },
+      { "local": "Barcelona", "visitante": "Sevilla" },
+      { "local": "Valencia", "visitante": "Atlético de Madrid" }
+    ]
+  },
+  {
+    "jornada": 2,
+    "partidos": [
+      { "local": "Sevilla", "visitante": "Real Madrid" },
+      { "local": "Betis", "visitante": "Valencia" },
+      { "local": "Atlético de Madrid", "visitante": "Barcelona" }
+    ]
+  }
+]

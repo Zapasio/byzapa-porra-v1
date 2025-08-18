@@ -1,11 +1,8 @@
 import { useEffect, useState } from "react";
 import "./index.css";
-import {
-  onAuthStateChanged,
-  signInWithRedirect,
-  getRedirectResult,
-  User,
-} from "firebase/auth";
+import { onAuthStateChanged, signInWithRedirect, getRedirectResult } from "firebase/auth";
+import type { User } from "firebase/auth";
+
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { auth, db, provider } from "./firebase";
 import MatchdayViewer from "./components/MatchdayViewer";

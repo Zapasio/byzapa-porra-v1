@@ -1,4 +1,5 @@
-export {};import { initializeApp } from "firebase/app";
+// src/firebase.ts
+import { initializeApp } from "firebase/app";
 import {
   getAuth,
   GoogleAuthProvider,
@@ -21,11 +22,8 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 
 export const provider = new GoogleAuthProvider();
-// siempre elegir cuenta
 provider.setCustomParameters({ prompt: "select_account" });
 
-// persistencia local para no perder sesión
 setPersistence(auth, browserLocalPersistence).catch((error) => {
   console.error("Error configurando persistencia:", error);
 });
-e);

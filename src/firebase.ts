@@ -1,9 +1,12 @@
-// src/firebase.ts
 import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import {
+  getAuth,
+  GoogleAuthProvider,
+  setPersistence,
+  browserLocalPersistence,
+} from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
-// Config pública (la de tu proyecto Byzapa-porra-v1)
 const firebaseConfig = {
   apiKey: "AIzaSyDv8gYpZ9MlHTuCGeF_KhEZsZ_9IPXWfcI",
   authDomain: "byzapa-porra-v1.firebaseapp.com",
@@ -15,5 +18,11 @@ const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const provider = new GoogleAuthProvider();
 export const db = getFirestore(app);
+
+export const provider = new GoogleAuthProvider();
+// que siempre te deje elegir cuenta
+provider.setCustomParameters({ prompt: "select_account" });
+
+// persistencia local para no perder sesión
+setPersistence(auth, browserLocalPersistence);

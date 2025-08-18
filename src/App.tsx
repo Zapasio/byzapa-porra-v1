@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import "./index.css";
-
-// Firebase
-import { onAuthStateChanged, signInWithPopup, User } from "firebase/auth";
+import {
+  onAuthStateChanged,
+  signInWithRedirect,
+  getRedirectResult,
+  User,
+} from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { auth, db, provider } from "./firebase";
-
-// UI
 import MatchdayViewer from "./components/MatchdayViewer";
 
 export default function App() {
@@ -14,9 +15,18 @@ export default function App() {
   const [approved, setApproved] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // Forzamos redirect (sin popup)
   const login = async () => {
-    await signInWithPopup(auth, provider);
+    await signInWithRedirect(auth, provider);
   };
+
+  // Captura el resultado del redirect y muestra el error real si lo hay
+  useEffect(() => {
+    getRedirectResult(auth).catch((e: any) => {
+      console.error("Redirect result error:", e?.code, e?.message);
+      alert(`Error de login: ${e?.code || e?.message || e}`);
+    });
+  }, []);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {

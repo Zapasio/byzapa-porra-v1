@@ -1,4 +1,4 @@
-iimport { initializeApp } from "firebase/app";
+export {};iimport { initializeApp } from "firebase/app";
 import {
   getAuth,
   GoogleAuthProvider,

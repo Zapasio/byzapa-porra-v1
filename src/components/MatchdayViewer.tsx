@@ -4,9 +4,9 @@ import {
   collection,
   query,
   where,
-  getDocs,
   onSnapshot,
-  addDoc,
+  setDoc,
+  doc,
 } from "firebase/firestore";
 
 interface Match {
@@ -22,7 +22,7 @@ interface MatchdayViewerProps {
   username: string;
 }
 
-export function MatchdayViewer({ userId, username }: MatchdayViewerProps) {
+export default function MatchdayViewer({ userId, username }: MatchdayViewerProps) {
   const db = getFirestore();
   const [matchdays, setMatchdays] = useState<{ [key: string]: Match[] }>({});
   const [picks, setPicks] = useState<{ [key: string]: string }>({});
@@ -31,8 +31,8 @@ export function MatchdayViewer({ userId, username }: MatchdayViewerProps) {
     const q = query(collection(db, "matches"));
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const days: { [key: string]: Match[] } = {};
-      querySnapshot.forEach((doc) => {
-        const match = { id: doc.id, ...doc.data() } as Match;
+      querySnapshot.forEach((docSnap) => {
+        const match = { id: docSnap.id, ...docSnap.data() } as Match;
         if (!days[match.matchdayId]) days[match.matchdayId] = [];
         days[match.matchdayId].push(match);
       });
@@ -56,15 +56,12 @@ export function MatchdayViewer({ userId, username }: MatchdayViewerProps) {
   }, []);
 
   useEffect(() => {
-    const q = query(
-      collection(db, "picks"),
-      where("userId", "==", userId)
-    );
+    const q = query(collection(db, "picks"), where("userId", "==", userId));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const picksData: { [key: string]: string } = {};
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
+      querySnapshot.forEach((docSnap) => {
+        const data = docSnap.data();
         picksData[data.matchdayId] = data.team;
       });
       setPicks(picksData);
@@ -73,16 +70,15 @@ export function MatchdayViewer({ userId, username }: MatchdayViewerProps) {
     return () => unsubscribe();
   }, [userId]);
 
-  const handlePick = async (
-    matchdayId: string,
-    team: string
-  ) => {
-    await addDoc(collection(db, "picks"), {
+  const handlePick = async (matchdayId: string, team: string) => {
+    const id = `${matchdayId}_${userId}`; // ID único para no duplicar
+    await setDoc(doc(db, "picks", id), {
+      id,
       userId,
       username,
       team,
       matchdayId,
-      timestamp: new Date(),
+      timestamp: Date.now(),
     });
   };
 

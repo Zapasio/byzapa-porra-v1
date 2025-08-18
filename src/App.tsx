@@ -1,33 +1,80 @@
-// Solo lectura general de partidos (matches). 
-// Picks: cada usuario solo lee/escribe su propio pick (docId = matchdayId_userId).
-// Users: cualquiera puede leer su doc; solo admin puede editar otros.
+import { useEffect, useState } from "react";
+import "./index.css";
 
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
+// Firebase
+import { onAuthStateChanged, signInWithPopup, User } from "firebase/auth";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { auth, db, provider } from "./firebase";
 
-    // PARTIDOS
-    match /matches/{matchId} {
-      allow read: if true;
-      allow write: if false;
-    }
+// UI
+import MatchdayViewer from "./components/MatchdayViewer";
 
-    // PICKS (id = matchdayId_userId)
-    match /picks/{pickId} {
-      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+export default function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [approved, setApproved] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-      allow create, update: if request.auth != null
-        && request.resource.data.userId == request.auth.uid
-        && request.resource.data.id == pickId;
+  const login = async () => {
+    await signInWithPopup(auth, provider);
+  };
 
-      allow delete: if false;
-    }
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      if (!u) {
+        setUser(null);
+        setApproved(false);
+        setLoading(false);
+        return;
+      }
+      const userRef = doc(db, "users", u.uid);
+      const snap = await getDoc(userRef);
 
-    // USERS
-    match /users/{uid} {
-      allow read: if request.auth != null && request.auth.uid == uid;
-      allow create: if request.auth != null && request.auth.uid == uid;
-      allow update: if request.auth != null && request.auth.uid == uid;
-    }
+      if (snap.exists()) {
+        const data = snap.data() as { approved?: boolean };
+        setUser(u);
+        setApproved(Boolean(data.approved));
+      } else {
+        await setDoc(userRef, {
+          uid: u.uid,
+          email: u.email ?? "",
+          displayName: u.displayName ?? "",
+          approved: false,
+        });
+        setUser(u);
+        setApproved(false);
+      }
+      setLoading(false);
+    });
+    return () => unsub();
+  }, []);
+
+  if (loading) return <div className="text-white text-center mt-20">Cargando…</div>;
+
+  if (!user) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen text-white">
+        <h1 className="text-3xl font-bold mb-4">ByZapa Porra VSLE</h1>
+        <button onClick={login} className="bg-yellow-400 text-black px-4 py-2 rounded">
+          Iniciar sesión con Google
+        </button>
+      </div>
+    );
   }
+
+  if (!approved) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen text-white text-center">
+        <h1 className="text-2xl mb-2">Hola {user.displayName || "jugador"}</h1>
+        <p className="mb-2">Tu cuenta aún no ha sido aprobada.</p>
+        <p>Espera a que Zapa te active en Firestore (users → approved: true).</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-gray-900 min-h-screen text-white">
+      <h1 className="text-center text-3xl font-bold py-6 text-yellow-400">ByZapa Porra VSLE</h1>
+      <MatchdayViewer userId={user.uid} username={user.displayName || user.email || "Jugador"} />
+    </div>
+  );
 }

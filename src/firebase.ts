@@ -8,14 +8,16 @@ import {
 } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
+// La configuración de Firebase se toma de las variables de entorno
+// definidas en `.env.local` (ver `.env.example`).
+// Al no dejar claves embebidas en el código evitamos exponerlas en el repositorio.
 const firebaseConfig = {
-  apiKey: "AlzaSyBP8HKsR_a2hRot5QUApJiq5S_Fj4u-Y08",
-  authDomain: "byzapa-porra-v1.firebaseapp.com",
-  projectId: "byzapa-porra-v1",
-  storageBucket: "byzapa-porra-v1.appspot.com",
-  messagingSenderId: "618449953181",
-  appId: "1:618449953181:web:1966a413d26a0ad026f074",
-  measurementId: "G-P9TY8401DJ",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
 const app = initializeApp(firebaseConfig);

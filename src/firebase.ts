@@ -9,12 +9,13 @@ import {
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDv8gYpZ9MlHTuCGeF_KhEZsZ_9IPXWfcI",
+  apiKey: "AIzaSyBsRpKA8nR0otSqUu4j55_p5ju-Y8a0",  // 🔁 la tuya completa
   authDomain: "byzapa-porra-v1.firebaseapp.com",
   projectId: "byzapa-porra-v1",
-  storageBucket: "byzapa-porra-v1.appspot.com",
-  messagingSenderId: "983580189308",
-  appId: "1:983580189308:web:0410d462d65fa1f6b2c10c",
+  storageBucket: "byzapa-porra-v1.firebasestorage.app",
+  messagingSenderId: "618449953181",
+  appId: "1:618449953181:web:1966a413d26a0ad026f074",
+  measurementId: "G-P9TY8401DJ",
 };
 
 export const app = initializeApp(firebaseConfig);

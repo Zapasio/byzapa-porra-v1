@@ -1,6 +1,11 @@
 // src/firebase.ts
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import {
+  getAuth,
+  GoogleAuthProvider,
+  setPersistence,
+  browserLocalPersistence,
+} from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -13,9 +18,17 @@ const firebaseConfig = {
   measurementId: "G-P9TY8401DJ",
 };
 
-// Inicializamos Firebase
 const app = initializeApp(firebaseConfig);
 
-// Exportamos servicios que usaremos
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+
+// ---- Provider para Google y persistencia ----
+export const provider = new GoogleAuthProvider();
+// que te deje elegir cuenta siempre
+provider.setCustomParameters({ prompt: "select_account" });
+
+// sesión persistente
+setPersistence(auth, browserLocalPersistence).catch((e) => {
+  console.error("Persistencia auth falló:", e);
+});

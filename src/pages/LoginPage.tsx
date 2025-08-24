@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { auth, provider } from '../firebase'
 import {
-  signInWithPopup, signInWithRedirect, getRedirectResult,
-  setPersistence, browserLocalPersistence
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  onAuthStateChanged,
 } from 'firebase/auth'
 import { useLocation, useNavigate } from 'react-router-dom'
 
@@ -19,18 +21,19 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    getRedirectResult(auth).then(() => {
-      if (auth.currentUser) {
+    const unsub = onAuthStateChanged(auth, user => {
+      if (user) {
         const to = (loc.state?.from?.pathname as string) || '/picks'
         nav(to, { replace: true })
       }
-    }).catch(() => {})
+    })
+    getRedirectResult(auth).catch(() => {})
+    return () => unsub()
   }, [])
 
   const login = async () => {
     setLoading(true)
     try {
-      await setPersistence(auth, browserLocalPersistence)
       if (shouldUseRedirect() || new URLSearchParams(location.search).get('redirect')==='1') {
         await signInWithRedirect(auth, provider); return
       }

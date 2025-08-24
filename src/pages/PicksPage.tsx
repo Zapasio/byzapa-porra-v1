@@ -10,7 +10,7 @@ export default function PicksPage() {
   const [userEmail, setUserEmail] = useState("");
   const [teamId, setTeamId] = useState("");
   const [sending, setSending] = useState(false);
-  const [message, setMessage] = useState("esperando");
+  const [message, setMessage] = useState("");
   const { seasonId, matchdayNumber, loading: cfgLoading, error: cfgError } = useAppConfig();
 
   useEffect(() => {
@@ -32,11 +32,29 @@ export default function PicksPage() {
       setMessage("Pick enviado correctamente");
     } catch (error: any) {
       console.error("Error al enviar pick:", error.message);
-      setMessage("Error al enviar pick");
+      const msg = mapSubmitError(error.message || error.code);
+      setMessage(msg);
     } finally {
       setSending(false);
     }
   };
+
+  function mapSubmitError(code: string | undefined) {
+    switch (code) {
+      case "already-picked-this-matchday":
+        return "Ya enviaste un pick para esta jornada";
+      case "team-already-used-this-season":
+        return "Ese equipo ya fue usado esta temporada";
+      case "matchday-closed":
+        return "La jornada ya está cerrada";
+      case "matchday-not-found":
+        return "La jornada no está disponible";
+      case "auth-required":
+        return "Debes iniciar sesión";
+      default:
+        return "Error al enviar pick";
+    }
+  }
 
   const teamMap = Object.fromEntries(TEAMS_25_26.map(t => [t.id, t]));
 
@@ -76,7 +94,7 @@ export default function PicksPage() {
       <button
         onClick={handleSubmitPick}
         className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-500 disabled:opacity-50"
-        disabled={!teamId || sending}
+        disabled={!teamId || sending || !userEmail}
       >
         {sending ? "Enviando..." : "Enviar Pick"}
       </button>

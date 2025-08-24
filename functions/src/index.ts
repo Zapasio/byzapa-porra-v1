@@ -91,8 +91,9 @@ export const bootstrapAdmin = onCall({ region: REGION, secrets: [ADMIN_EMAIL] },
 // 1) Enviar pick (no repetir equipo temporada / 1 pick por jornada / jornada abierta)
 export const submitPick = onCall({ region: REGION }, async (req) => {
   assertAuth(req);
-  const { seasonId, matchdayNumber, teamId } = req.data || {};
-  if (!seasonId || !matchdayNumber || !teamId) throw new Error("missing-fields");
+  const { seasonId, matchdayNumber, teamId: rawTeamId } = req.data || {};
+  if (!seasonId || !matchdayNumber || !rawTeamId) throw new Error("missing-fields");
+  const teamId = String(rawTeamId).toUpperCase();
 
   const uid = req.auth!.uid;
 
@@ -183,7 +184,9 @@ export const ingestResults = onCall({ region: REGION, secrets: [SPORTS_API_KEY] 
 
   let updated = 0;
   for (const m of data.matches) {
-    const id = `${seasonId}__${matchdayNumber}__${m.homeId}-${m.awayId}`;
+    const homeId = String(m.homeId).toUpperCase();
+    const awayId = String(m.awayId).toUpperCase();
+    const id = `${seasonId}__${matchdayNumber}__${homeId}-${awayId}`;
     const ref = db.collection("matches").doc(id);
     if ((await ref.get()).exists) { await ref.update({ result: m.result }); updated++; }
   }
@@ -235,9 +238,9 @@ export const adminSeed = onCall({ region: REGION }, async (req) => {
 
   // teams
   for (const t of teams) {
-    const id = String(t.id);
+    const id = String(t.id).toUpperCase();
     const ref = db.collection("teams").doc(id);
-    batch.set(ref, { id, name: t.name, shortName: t.shortName || id.toUpperCase(), crestUrl: t.crestUrl || "" }, { merge: true });
+    batch.set(ref, { id, name: t.name, shortName: t.shortName || id, crestUrl: t.crestUrl || "" }, { merge: true });
   }
 
   // matches + matchdays
@@ -245,10 +248,12 @@ export const adminSeed = onCall({ region: REGION }, async (req) => {
   for (const m of matches) {
     const md = Number(m.matchdayNumber);
     mdSet.add(md);
-    const id = `${seasonId}__${md}__${m.homeId}-${m.awayId}`;
+    const homeId = String(m.homeId).toUpperCase();
+    const awayId = String(m.awayId).toUpperCase();
+    const id = `${seasonId}__${md}__${homeId}-${awayId}`;
     const ref = db.collection("matches").doc(id);
     batch.set(ref, {
-      id, seasonId, matchdayNumber: md, homeId: m.homeId, awayId: m.awayId,
+      id, seasonId, matchdayNumber: md, homeId, awayId,
       order: Number(m.order ?? 0), result: m.result ?? null
     }, { merge: true });
   }

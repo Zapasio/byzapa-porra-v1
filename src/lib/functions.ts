@@ -1,11 +1,26 @@
-import { getFunctions, httpsCallable } from "firebase/functions";
-import { app } from "../firebase";
+// src/lib/functions.ts
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "../firebase";
 
-const region = "europe-west1";
-const fns = getFunctions(app, region);
+type SubmitPickArgs = {
+  uid: string;            // OBLIGATORIO
+  seasonId: string;
+  matchdayNumber: number;
+  teamId: string;
+};
 
-export const bootstrapAdminFn   = httpsCallable(fns, "bootstrapAdmin");
-export const submitPickFn       = httpsCallable(fns, "submitPick");
-export const processMatchdayFn  = httpsCallable(fns, "processMatchday");
-export const ingestResultsFn    = httpsCallable(fns, "ingestResults");
-export const generateSummaryFn  = httpsCallable(fns, "generateSummary");
+export async function submitPick({ uid, seasonId, matchdayNumber, teamId }: SubmitPickArgs) {
+  if (!uid) throw new Error("NO_AUTH");
+  if (!seasonId || !matchdayNumber || !teamId) throw new Error("MISSING_FIELDS");
+
+  const pickId = `${uid}_${seasonId}_${matchdayNumber}`;
+  const ref = doc(db, "picks", pickId);
+
+  await setDoc(ref, {
+    uid,
+    seasonId,
+    matchdayNumber,
+    teamId,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+}

@@ -1,37 +1,58 @@
-import { useEffect, useState } from 'react'
-import { db } from '../firebase'
-import { collection, getDocs, query, where } from 'firebase/firestore'
+import { useEffect, useState } from 'react';
+import { collection, query, orderBy } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import { safeGetDocs } from '../lib/queryUtils';
 
-const seasonId = '2025-26'
+export default function Standings() {
+  const [standings, setStandings] = useState([]);
 
-type Row = { userId:string; displayName?:string; points:number }
+  useEffect(() => {
+    async function loadStandings() {
+      const q = query(collection(db, 'leaderboards'), orderBy('points', 'desc'));
+      const snapshot = await safeGetDocs(q);
+      const data = snapshot.docs.map(doc => ({
+        ...doc.data(),
+        id: doc.id,
+        pick: '' // Placeholder, fetch pick abajo
+      }));
+      // Fetch picks for each user
+      for (let item of data) {
+        const pickQ = query(collection(db, 'picks_user'), where('user', '==', item.uid), orderBy('matchdayNumber', 'desc'));
+        const pickSnapshot = await safeGetDocs(pickQ);
+        if (pickSnapshot.docs.length > 0) {
+          item.pick = pickSnapshot.docs[0].data().teamId.toUpperCase();
+        }
+      }
+      setStandings(data);
+    }
+    loadStandings();
+  }, []);
 
-export default function StandingsPage() {
-  const [rows, setRows] = useState<Row[]>([])
-  useEffect(()=>{
-    const qy = query(collection(db,'leaderboards'), where('seasonId','==', seasonId))
-    getDocs(qy).then(s=>{
-      const list = s.docs.map(d=> d.data() as any)
-      setRows(list.sort((a:any,b:any)=> (b.points||0)-(a.points||0)))
-    })
-  }, [])
   return (
-    <section className="grid gap-3">
-      <h1 className="text-2xl font-bold">Clasificación — {seasonId}</h1>
-      <table className="min-w-full text-sm">
-        <thead className="text-left opacity-70">
-          <tr><th className="py-2">#</th><th>Jugador</th><th>Puntos</th></tr>
+    <div className="p-4">
+      <h1 className="text-2xl font-bold mb-4">Clasificación General</h1>
+      <table className="w-full border-collapse border">
+        <thead>
+          <tr className="bg-blue-800 text-white">
+            <th className="p-2">#</th>
+            <th className="p-2">Jugador</th>
+            <th className="p-2">Puntos</th>
+            <th className="p-2">Pick Actual</th>
+            <th className="p-2">Estado</th>
+          </tr>
         </thead>
         <tbody>
-          {rows.map((r,i)=>(
-            <tr key={r.userId} className="border-t border-white/5">
-              <td className="py-2">{i+1}</td>
-              <td>{r.displayName || r.userId.slice(0,6)}</td>
-              <td className="font-semibold">{r.points ?? 0}</td>
+          {standings.map((item, index) => (
+            <tr key={item.id} className="border-t">
+              <td className="p-2">{index + 1}</td>
+              <td className="p-2">{item.displayName || 'Sin nombre'}</td>
+              <td className="p-2">{item.points}</td>
+              <td className="p-2">{item.pick || 'Ninguno'}</td>
+              <td className="p-2 text-green-500">Activo</td>
             </tr>
           ))}
         </tbody>
       </table>
-    </section>
-  )
+    </div>
+  );
 }

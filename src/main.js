@@ -1,1 +1,0 @@
-console.log('ByZapa Porra VSLE App Loaded');

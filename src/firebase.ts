@@ -1,34 +1,22 @@
 // src/firebase.ts
-import { initializeApp } from "firebase/app";
-import {
-  getAuth,
-  GoogleAuthProvider,
-  setPersistence,
-  browserLocalPersistence,
-} from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { initializeApp, getApps, getApp } from 'firebase/app'
+import { getAuth, GoogleAuthProvider } from 'firebase/auth'
+import { getFirestore } from 'firebase/firestore'
 
+// ⚠️ Usa siempre import.meta.env en Vite
 const firebaseConfig = {
-  apiKey: "AlzaSyBP8HKsR_a2hRot5QUApJiq5S_Fj4u-Y08",
-  authDomain: "byzapa-porra-v1.firebaseapp.com",
-  projectId: "byzapa-porra-v1",
-  storageBucket: "byzapa-porra-v1.appspot.com",
-  messagingSenderId: "618449953181",
-  appId: "1:618449953181:web:1966a413d26a0ad026f074",
-  measurementId: "G-P9TY8401DJ",
-};
+  apiKey: import.meta.env.VITE_FB_API_KEY,
+  authDomain: import.meta.env.VITE_FB_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FB_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FB_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FB_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FB_APP_ID,
+}
 
-const app = initializeApp(firebaseConfig);
+// Evita inicialización doble
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig)
 
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-
-// ---- Provider para Google y persistencia ----
-export const provider = new GoogleAuthProvider();
-// que te deje elegir cuenta siempre
-provider.setCustomParameters({ prompt: "select_account" });
-
-// sesión persistente
-setPersistence(auth, browserLocalPersistence).catch((e) => {
-  console.error("Persistencia auth falló:", e);
-});
+// Exporta servicios
+export const auth = getAuth(app)
+export const db = getFirestore(app)
+export const googleProvider = new GoogleAuthProvider()

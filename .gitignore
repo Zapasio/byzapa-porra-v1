@@ -24,3 +24,5 @@ functions/.runtimeconfig.json
 Thumbs.db
 *.log
 
+# claves privadas
+serviceAccountKey.json

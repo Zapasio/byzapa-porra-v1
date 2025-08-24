@@ -1,16 +1,30 @@
-// REGLAS FINALES (seguras, como las que pegaste)
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function isSignedIn() { return request.auth != null; }
-    function isAdmin() { return isSignedIn() && request.auth.token.admin == true; }
 
-    match /picks/{id}        { allow read: if isSignedIn(); allow write: if false; }
-    match /users/{uid}       { allow read: if isSignedIn(); allow write: if isSignedIn() && request.auth.uid == uid; }
-    match /teams/{id}        { allow read: if true; allow write: if isAdmin(); }
-    match /matchdays/{id}    { allow read: if true; allow write: if isAdmin(); }
-    match /matches/{id}      { allow read: if true; allow write: if isAdmin(); }
-    match /seasons/{id}      { allow read: if true; allow write: if isAdmin(); }
-    match /leaderboards/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && (request.auth.uid == uid || request.auth.token.email == uid);
+    }
+
+    match /picks_user/{docId} {
+      allow create: if isSignedIn()
+        && (request.resource.data.user == request.auth.uid
+            || request.resource.data.user == request.auth.token.email);
+      allow read: if isSignedIn();
+      allow update, delete: if false;
+    }
+
+    match /fixtures/{matchday}/items/{fixtureId} {
+      allow read: if true;
+      allow write: if false; // lo escribe Cloud Functions
+    }
+
+    match /picks_ai_explanations/{docId} {
+      allow create, read: if isSignedIn();
+      allow update, delete: if false;
+    }
   }
 }
+

@@ -1,87 +1,62 @@
-import { useEffect, useState } from "react";
-import "./index.css";
-import { onAuthStateChanged, signInWithRedirect, getRedirectResult } from "firebase/auth";
-import type { User } from "firebase/auth";
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { lazy, Suspense, useState, useEffect } from 'react';
+import { auth } from './lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { Navigate } from 'react-router-dom';
 
-import { doc, getDoc, setDoc } from "firebase/firestore";
-import { auth, db, provider } from "./firebase";
-import MatchdayViewer from "./components/MatchdayViewer";
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const PicksPage = lazy(() => import('./pages/PicksPage'));
+const Picks = lazy(() => import('./pages/Picks'));
+const StandingsPage = lazy(() => import('./pages/StandingsPage'));
+const Live = lazy(() => import('./pages/Live'));
+const Partidas = lazy(() => import('./pages/Partidas'));
+const AllPicksPage = lazy(() => import('./pages/AllPicksPage'));
+const MyHistoryPage = lazy(() => import('./pages/MyHistoryPage'));
+const Diagnostics = lazy(() => import('./pages/Diagnostics'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const porrahime = lazy(() => import('./pages/porrahime'));  // Nombre en minús para match
+const byzapaonepage = lazy(() => import('./pages/byzapaonepage'));  // Nombre en minús
+const adminpage = lazy(() => import('./pages/adminpage'));  // Nombre en minús
 
-export default function App() {
-  const [user, setUser] = useState<User | null>(null);
-  const [approved, setApproved] = useState(false);
+function PrivateRoute({ children }) {
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Forzamos redirect (sin popup)
-  const login = async () => {
-    await signInWithRedirect(auth, provider);
-  };
-
-  // Captura el resultado del redirect y muestra el error real si lo hay
   useEffect(() => {
-    getRedirectResult(auth).catch((e: any) => {
-      console.error("Redirect result error:", e?.code, e?.message);
-      alert(`Error de login: ${e?.code || e?.message || e}`);
-    });
-  }, []);
-
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
-      if (!u) {
-        setUser(null);
-        setApproved(false);
-        setLoading(false);
-        return;
-      }
-      const userRef = doc(db, "users", u.uid);
-      const snap = await getDoc(userRef);
-
-      if (snap.exists()) {
-        const data = snap.data() as { approved?: boolean };
-        setUser(u);
-        setApproved(Boolean(data.approved));
-      } else {
-        await setDoc(userRef, {
-          uid: u.uid,
-          email: u.email ?? "",
-          displayName: u.displayName ?? "",
-          approved: false,
-        });
-        setUser(u);
-        setApproved(false);
-      }
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
       setLoading(false);
     });
-    return () => unsub();
+    return unsubscribe;
   }, []);
 
-  if (loading) return <div className="text-white text-center mt-20">Cargando…</div>;
+  if (loading) return <div>Cargando...</div>;
+  return user ? children : <Navigate to="/login" />;
+}
 
-  if (!user) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen text-white">
-        <h1 className="text-3xl font-bold mb-4">ByZapa Porra VSLE</h1>
-        <button onClick={login} className="bg-yellow-400 text-black px-4 py-2 rounded">
-          Iniciar sesión con Google
-        </button>
-      </div>
-    );
-  }
-
-  if (!approved) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen text-white text-center">
-        <h1 className="text-2xl mb-2">Hola {user.displayName || "jugador"}</h1>
-        <p className="mb-2">Tu cuenta aún no ha sido aprobada.</p>
-        <p>Espera a que Zapa te active en Firestore (users → approved: true).</p>
-      </div>
-    );
-  }
-
+function App() {
   return (
-    <div className="bg-gray-900 min-h-screen text-white">
-      <h1 className="text-center text-3xl font-bold py-6 text-yellow-400">ByZapa Porra VSLE</h1>
-      <MatchdayViewer userId={user.uid} username={user.displayName || user.email || "Jugador"} />
-    </div>
+    <BrowserRouter>
+      <Suspense fallback={<div>Cargando...</div>}>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/picks-page" element={<PrivateRoute><PicksPage /></PrivateRoute>} />
+          <Route path="/picks" element={<PrivateRoute><Picks /></PrivateRoute>} />
+          <Route path="/standings" element={<PrivateRoute><StandingsPage /></PrivateRoute>} />
+          <Route path="/live" element={<PrivateRoute><Live /></PrivateRoute>} />
+          <Route path="/partidas" element={<PrivateRoute><Partidas /></PrivateRoute>} />
+          <Route path="/all-picks" element={<PrivateRoute><AllPicksPage /></PrivateRoute>} />
+          <Route path="/history" element={<PrivateRoute><MyHistoryPage /></PrivateRoute>} />
+          <Route path="/diagnostics" element={<PrivateRoute><Diagnostics /></PrivateRoute>} />
+          <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+          <Route path="/porrahime" element={<PrivateRoute><porrahime /></PrivateRoute>} />
+          <Route path="/home" element={<PrivateRoute><byzapaonepage /></PrivateRoute>} />
+          <Route path="/admin" element={<PrivateRoute><adminpage /></PrivateRoute>} />
+          <Route path="/" element={<Navigate to="/picks" />} />
+        </Routes>
+      </Suspense>
+    </BrowserRouter>
   );
 }
+
+export default App;

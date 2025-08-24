@@ -1,377 +1,215 @@
-// Cloud Functions v2 (Node 20)
-import { onCall, onRequest } from "firebase-functions/v2/https";
-import { onDocumentWritten } from "firebase-functions/v2/firestore";
-import { defineSecret } from "firebase-functions/params";
+import * as admin from "firebase-admin";
+import * as functions from "firebase-functions";
+import { z } from "zod";
 
-// Firebase Admin
-import { initializeApp } from "firebase-admin/app";
-import { getFirestore, Timestamp } from "firebase-admin/firestore";
-import { getAuth } from "firebase-admin/auth";
-import { getDatabase as getRtdb } from "firebase-admin/database";
+admin.initializeApp();
+const db = admin.firestore();
 
-// ---- Init ----
-initializeApp();
-const db = getFirestore();
-const authAdmin = getAuth();
-const rtdb = getRtdb();
-const REGION = "europe-west1";
+const REGION = "europe-west1"; // usa tu región
 
-// ---- Secrets ----
-const ADMIN_EMAIL = defineSecret("ADMIN_EMAIL");
-const SPORTS_API_KEY = defineSecret("SPORTS_API_KEY");
-const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
+/** Utilidades */
+const seasonId = "2025-26"; // si cambias de temporada, actualiza aquí
 
-// ---- Helpers ----
-function assertAuth(req: any) {
-  if (!req.auth) throw new Error("auth-required");
-}
-function assertAdmin(req: any) {
-  assertAuth(req);
-  if (!(req.auth.token as any)?.admin) throw new Error("admin-only");
-}
-async function buildSnapshot(seasonId: string, md: number) {
-  const [picksSnap, matchesSnap, lbSnap] = await Promise.all([
-    db.collection("picks").where("seasonId","==",seasonId).where("matchdayNumber","==",md).get(),
-    db.collection("matches").where("seasonId","==",seasonId).where("matchdayNumber","==",md).get(),
-    db.collection("leaderboards").where("seasonId","==",seasonId).get(),
-  ]);
-
-  const picks = picksSnap.docs.map(d => {
-    const x = d.data() as any;
-    return {
-      id: d.id,
-      userId: x.userId,
-      displayName: x.displayName || x.userId?.slice(0,6),
-      teamId: x.teamId,
-      matchdayNumber: x.matchdayNumber
-    };
-  });
-
-  const matches = matchesSnap.docs.map(d => {
-    const x = d.data() as any;
-    return {
-      id: d.id,
-      homeId: x.homeId,
-      awayId: x.awayId,
-      result: x.result || null,
-      order: x.order || 0
-    };
-  }).sort((a,b)=> (a.order??0) - (b.order??0));
-
-  const leaderboard = lbSnap.docs.map(d => {
-    const x = d.data() as any;
-    return { userId: x.userId, displayName: x.displayName || x.userId?.slice(0,6), points: Number(x.points || 0) };
-  }).sort((a,b)=> b.points - a.points);
-
-  return { picks, matches, leaderboard };
-}
-async function publishLive(seasonId: string, md: number) {
-  const live = await buildSnapshot(seasonId, md);
-  const payload = { seasonId, md, ...live, updatedAt: Date.now() };
-  await rtdb.ref(`live/${seasonId}/${md}`).set(payload);
-  return payload;
-}
-
-// =======================
-//  A) CALLABLES (backend)
-// =======================
-
-// 0) Hacer admin al email permitido por secret ADMIN_EMAIL
-export const bootstrapAdmin = onCall({ region: REGION, secrets: [ADMIN_EMAIL] }, async (req) => {
-  assertAuth(req);
-  const callerEmail = (req.auth!.token.email || "").toLowerCase();
-  const allowed = (ADMIN_EMAIL.value() || "").toLowerCase();
-  if (!callerEmail || callerEmail !== allowed) throw new Error("not-allowed");
-
-  await authAdmin.setCustomUserClaims(req.auth!.uid, { admin: true });
-  await db.collection("users").doc(req.auth!.uid).set({ admin: true, email: callerEmail }, { merge: true });
-  return { ok: true };
+/** Esquema de entrada para crear pick */
+const CreatePickSchema = z.object({
+  matchdayId: z.string(),      // ej: "2025-26_2"
+  team: z.string().min(2),     // ej: "rma", "fcb", ...
 });
 
-// 1) Enviar pick (no repetir equipo temporada / 1 pick por jornada / jornada abierta)
-export const submitPick = onCall({ region: REGION }, async (req) => {
-  assertAuth(req);
-  const { seasonId, matchdayNumber, teamId } = req.data || {};
-  if (!seasonId || !matchdayNumber || !teamId) throw new Error("missing-fields");
+/**
+ * Dado un matchdayId, devuelve:
+ * - firstKickoff (Date): primer kickoff de la jornada
+ * - full (boolean): si la jornada es "completa" (tiene todos los partidos previstos)
+ *   => En tu caso asumimos "completa" si hay 10 partidos de primera.
+ */
+async function getMatchdayInfo(matchdayId: string) {
+  const snap = await db.collection("matches")
+    .where("matchdayId", "==", matchdayId).get();
+  const matches = snap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
 
-  const uid = req.auth!.uid;
+  const kickoffs = matches
+    .map(m => m.kickoff?.toDate?.() ?? (m.kickoff instanceof Date ? m.kickoff : new Date(m.kickoff)))
+    .filter(Boolean) as Date[];
 
-  const prev = await db.collection("picks")
-    .where("userId","==",uid).where("seasonId","==",seasonId)
-    .where("matchdayNumber","==",matchdayNumber).limit(1).get();
-  if (!prev.empty) throw new Error("already-picked-this-matchday");
+  const firstKickoff = kickoffs.length ? new Date(Math.min(...kickoffs.map(d => d.getTime()))) : null;
 
-  const used = await db.collection("picks")
-    .where("userId","==",uid).where("seasonId","==",seasonId)
-    .where("teamId","==",teamId).limit(1).get();
-  if (!used.empty) throw new Error("team-already-used-this-season");
+  return {
+    matches,
+    firstKickoff,
+    full: matches.length >= 10, // ajusta si tu liga tiene otro nº
+  };
+}
 
-  const mdId = `${seasonId}__${matchdayNumber}`;
-  const md = await db.collection("matchdays").doc(mdId).get();
-  if (!md.exists) throw new Error("matchday-not-found");
-  if ((md.data() as any).status !== "open") throw new Error("matchday-closed");
+/** Comprueba si un pick previo reutiliza equipo */
+async function hasUsedTeam(userId: string, team: string) {
+  const q = await db.collection("picks")
+    .where("userId", "==", userId)
+    .where("seasonId", "==", seasonId)
+    .where("team", "==", team)
+    .get();
+  return !q.empty;
+}
 
-  const id = `${uid}__${seasonId}__${matchdayNumber}`;
-  await db.collection("picks").doc(id).set({
-    id, userId: uid, displayName: req.auth!.token.name || req.auth!.token.email,
-    seasonId, matchdayNumber, teamId, createdAt: Timestamp.now()
-  });
+/** Comprueba si ya hizo pick en esa jornada */
+async function hasPickThisMatchday(userId: string, matchdayId: string) {
+  const q = await db.collection("picks")
+    .where("userId", "==", userId)
+    .where("matchdayId", "==", matchdayId)
+    .get();
+  return !q.empty;
+}
 
-  return { ok: true };
-});
-
-// 2) Procesar jornada (suma puntos a leaderboards)
-export const processMatchday = onCall({ region: REGION }, async (req) => {
-  assertAdmin(req);
-  const { seasonId, matchdayNumber } = req.data || {};
-  if (!seasonId || !matchdayNumber) throw new Error("missing-fields");
-
-  const matchesSnap = await db.collection("matches")
-    .where("seasonId","==",seasonId).where("matchdayNumber","==",matchdayNumber).get();
-  const picksSnap = await db.collection("picks")
-    .where("seasonId","==",seasonId).where("matchdayNumber","==",matchdayNumber).get();
-
-  const matches = matchesSnap.docs.map(d => d.data() as any);
-  const pointsByUser = new Map<string, number>();
-
-  for (const pDoc of picksSnap.docs) {
-    const p = pDoc.data() as any;
-    const m = matches.find((mm:any)=> mm.homeId===p.teamId || mm.awayId===p.teamId);
-    let pts = 0;
-    if (m) {
-      if (m.result === "DRAW") pts = 0.5;
-      else if (m.result === "HOME" && m.homeId === p.teamId) pts = 1;
-      else if (m.result === "AWAY" && m.awayId === p.teamId) pts = 1;
+/**
+ * Callable para crear pick con TODAS las validaciones de reglas.
+ */
+export const createPick = functions
+  .region(REGION)
+  .https.onCall(async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError("unauthenticated", "Login requerido.");
     }
-    pointsByUser.set(p.userId, (pointsByUser.get(p.userId) || 0) + pts);
-  }
+    const userId = context.auth.uid;
 
-  for (const [uid, pts] of pointsByUser) {
-    const lbRef = db.collection("leaderboards").doc(`${seasonId}__${uid}`);
-    const snap = await lbRef.get();
-    const prev = (snap.data() as any)?.points || 0;
+    // Validar payload
+    const parsed = CreatePickSchema.safeParse(data);
+    if (!parsed.success) {
+      throw new functions.https.HttpsError("invalid-argument", "Datos inválidos.");
+    }
+    const { matchdayId, team } = parsed.data;
 
-    const anyPick = picksSnap.docs.find(d => (d.data() as any).userId === uid);
-    const displayName = anyPick ? ((anyPick.data() as any).displayName || "") : "";
+    // Usuario aprobado y NO eliminado
+    const userRef = db.collection("users").doc(userId);
+    const userSnap = await userRef.get();
+    if (!userSnap.exists) {
+      throw new functions.https.HttpsError("failed-precondition", "Usuario no registrado.");
+    }
+    const user = userSnap.data() as any;
+    if (!user.approved) {
+      throw new functions.https.HttpsError("failed-precondition", "Usuario no aprobado.");
+    }
+    if (user.eliminated === true) {
+      throw new functions.https.HttpsError("failed-precondition", "Usuario eliminado.");
+    }
 
-    await lbRef.set({
-      id: `${seasonId}__${uid}`,
-      seasonId, userId: uid,
-      displayName,
-      points: prev + pts
-    }, { merge: true });
-  }
+    // Jornada completa + tiempo (no empezada)
+    const { matches, firstKickoff, full } = await getMatchdayInfo(matchdayId);
 
-  await db.collection("matchdays").doc(`${seasonId}__${matchdayNumber}`).set({ status: "processed" }, { merge: true });
-  return { ok: true, users: pointsByUser.size };
-});
+    if (!full) {
+      throw new functions.https.HttpsError("failed-precondition", "La jornada no es completa.");
+    }
+    if (!firstKickoff) {
+      throw new functions.https.HttpsError("failed-precondition", "La jornada no tiene horario.");
+    }
+    const now = new Date();
+    if (now >= firstKickoff) {
+      throw new functions.https.HttpsError("failed-precondition", "La jornada ya ha comenzado.");
+    }
 
-// 3) Importar resultados desde API externa
-export const ingestResults = onCall({ region: REGION, secrets: [SPORTS_API_KEY] }, async (req) => {
-  assertAdmin(req);
-  const { seasonId, matchdayNumber } = req.data || {};
-  if (!seasonId || !matchdayNumber) throw new Error("missing-fields");
-  const key = SPORTS_API_KEY.value();
-  if (!key) throw new Error("sports-api-key-missing");
+    // El equipo elegido debe estar en la lista de partidos de la jornada
+    const appears = matches.some(m => m.homeTeam === team || m.awayTeam === team);
+    if (!appears) {
+      throw new functions.https.HttpsError("failed-precondition", "Equipo no pertenece a la jornada.");
+    }
 
-  const endpoint = process.env.SPORTS_ENDPOINT || "https://api.tu-proveedor.com/laliga/matchday";
-  const url = `${endpoint}?season=${encodeURIComponent(seasonId)}&md=${matchdayNumber}`;
+    // no repetir equipo en toda la temporada
+    if (await hasUsedTeam(userId, team)) {
+      throw new functions.https.HttpsError("failed-precondition", "Equipo ya usado esta temporada.");
+    }
 
-  const resp = await fetch(url, { headers: { Authorization: `Bearer ${key}` } as any });
-  if (!resp.ok) throw new Error(`sports-api ${resp.status}`);
-  const data = await resp.json() as { matches: Array<{ homeId:string; awayId:string; result:'HOME'|'AWAY'|'DRAW' }> };
+    // un pick por jornada
+    if (await hasPickThisMatchday(userId, matchdayId)) {
+      throw new functions.https.HttpsError("failed-precondition", "Ya has elegido en esta jornada.");
+    }
 
-  let updated = 0;
-  for (const m of data.matches) {
-    const id = `${seasonId}__${matchdayNumber}__${m.homeId}-${m.awayId}`;
-    const ref = db.collection("matches").doc(id);
-    if ((await ref.get()).exists) { await ref.update({ result: m.result }); updated++; }
-  }
-  return { updated };
-});
+    // Registrar pick
+    const displayName = user.displayName || user.email || "Jugador";
+    const pick = {
+      userId,
+      username: displayName,
+      team,
+      matchdayId,
+      seasonId,
+      status: "pending", // pending | win | lose
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
 
-// 4) Resumen IA callable (guarda en summaries y devuelve)
-export const generateSummary = onCall({ region: REGION, secrets: [GEMINI_API_KEY] }, async (req) => {
-  assertAdmin(req);
-  const { seasonId, matchdayNumber } = req.data || {};
-  if (!seasonId || !matchdayNumber) throw new Error("missing-fields");
+    await db.collection("picks").add(pick);
 
-  const [mSnap, pSnap] = await Promise.all([
-    db.collection("matches").where("seasonId","==",seasonId).where("matchdayNumber","==",matchdayNumber).get(),
-    db.collection("picks").where("seasonId","==",seasonId).where("matchdayNumber","==",matchdayNumber).get(),
-  ]);
+    return { ok: true, pick };
+  });
 
-  const matches = mSnap.docs.map(d=>d.data());
-  const picks = pSnap.docs.map(d=>d.data());
+/**
+ * Cuando se actualiza el resultado de un partido, evaluamos los picks de esa jornada.
+ * Reglas:
+ *  - Si el equipo elegido gana => win
+ *  - Si empata/pierde => lose (y marcamos usuario eliminado=true)
+ *  - Si partido "suspended":
+ *      * si se suspendió una vez iniciada la jornada => win
+ *      * si se suspendió antes de empezar la jornada => se anula ese pick (permitimos repetir; borramos doc)
+ */
+export const evaluatePicksOnMatchUpdate = functions
+  .region(REGION)
+  .firestore.document("matches/{matchId}")
+  .onWrite(async (change, context) => {
+    const after = change.after.exists ? change.after.data() as any : null;
+    if (!after) return;
 
-  const { GoogleGenerativeAI } = await import("@google/generative-ai");
-  const apiKey = GEMINI_API_KEY.value();
-  if (!apiKey) throw new Error("GEMINI_API_KEY not set");
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+    const { matchdayId, homeTeam, awayTeam, result, status, kickoff } = after;
+    if (!matchdayId) return;
 
-  const prompt = `Genera un resumen (≤120 palabras) Jornada ${matchdayNumber} LaLiga ${seasonId}.
-Resultados: ${JSON.stringify(matches)}
-Picks: ${JSON.stringify(picks.map((p:any)=>({userId:p.userId, displayName:p.displayName, teamId:p.teamId})))}
-Devuelve TEXTO PLANO.`;
+    const kickoffDate = kickoff?.toDate?.() ?? new Date(kickoff);
+    const mdInfo = await getMatchdayInfo(matchdayId);
+    const firstKickoff = mdInfo.firstKickoff;
 
-  const out = await model.generateContent(prompt);
-  const text = out.response.text();
+    // Picks de esa jornada que hayan elegido uno de los dos equipos
+    const picksSnap = await db.collection("picks")
+      .where("matchdayId", "==", matchdayId)
+      .where("status", "==", "pending")
+      .get();
 
-  await db.collection("summaries").doc(`${seasonId}__${matchdayNumber}`).set({
-    seasonId, matchdayNumber, text, createdAt: Timestamp.now()
-  }, { merge:true });
+    const batch = db.batch();
 
-  return { text };
-});
+    for (const d of picksSnap.docs) {
+      const p = d.data() as any;
+      if (p.team !== homeTeam && p.team !== awayTeam) continue;
 
-// 5) Admin: siembra de datos (equipos + partidos + matchdays)
-export const adminSeed = onCall({ region: REGION }, async (req) => {
-  assertAdmin(req);
-  const { seasonId, teams = [], matches = [] } = req.data || {};
-  if (!seasonId) throw new Error("missing-seasonId");
+      // partido suspendido
+      if (status === "suspended") {
+        if (firstKickoff && kickoffDate && firstKickoff <= kickoffDate) {
+          // la jornada ya había empezado cuando se suspendió => cuenta como ganada
+          batch.update(d.ref, { status: "win", resolvedAt: admin.firestore.FieldValue.serverTimestamp() });
+        } else {
+          // suspensión previa al inicio de jornada => anular pick
+          batch.delete(d.ref);
+        }
+        continue;
+      }
 
-  const batch = db.batch();
+      // si ya tenemos resultado normal
+      if (result && typeof result === "object") {
+        const { home, away } = result as { home: number; away: number };
+        const winner =
+          home > away ? homeTeam :
+          away > home ? awayTeam : "draw";
 
-  // teams
-  for (const t of teams) {
-    const id = String(t.id);
-    const ref = db.collection("teams").doc(id);
-    batch.set(ref, { id, name: t.name, shortName: t.shortName || id.toUpperCase(), crestUrl: t.crestUrl || "" }, { merge: true });
-  }
+        if (winner === "draw") {
+          // eliminado
+          batch.update(d.ref, { status: "lose", resolvedAt: admin.firestore.FieldValue.serverTimestamp() });
+          // marcar usuario eliminado
+          const uref = db.collection("users").doc(p.userId);
+          batch.update(uref, { eliminated: true });
+        } else {
+          const isWin = (p.team === winner);
+          if (isWin) {
+            batch.update(d.ref, { status: "win", resolvedAt: admin.firestore.FieldValue.serverTimestamp() });
+          } else {
+            batch.update(d.ref, { status: "lose", resolvedAt: admin.firestore.FieldValue.serverTimestamp() });
+            const uref = db.collection("users").doc(p.userId);
+            batch.update(uref, { eliminated: true });
+          }
+        }
+      }
+    }
 
-  // matches + matchdays
-  const mdSet = new Set<number>();
-  for (const m of matches) {
-    const md = Number(m.matchdayNumber);
-    mdSet.add(md);
-    const id = `${seasonId}__${md}__${m.homeId}-${m.awayId}`;
-    const ref = db.collection("matches").doc(id);
-    batch.set(ref, {
-      id, seasonId, matchdayNumber: md, homeId: m.homeId, awayId: m.awayId,
-      order: Number(m.order ?? 0), result: m.result ?? null
-    }, { merge: true });
-  }
-  for (const md of mdSet) {
-    const ref = db.collection("matchdays").doc(`${seasonId}__${md}`);
-    batch.set(ref, { id: `${seasonId}__${md}`, seasonId, matchdayNumber: md, status: "open" }, { merge: true });
-  }
-
-  await batch.commit();
-  return { ok: true, teams: teams.length, matches: matches.length, matchdays: mdSet.size };
-});
-
-// 6) Cambiar estado de jornada
-export const setMatchdayStatus = onCall({ region: REGION }, async (req) => {
-  assertAdmin(req);
-  const { seasonId, matchdayNumber, status } = req.data || {};
-  if (!seasonId || !matchdayNumber || !status) throw new Error("missing-fields");
-  await db.collection("matchdays").doc(`${seasonId}__${matchdayNumber}`).set({ status }, { merge: true });
-  return { ok: true };
-});
-
-// 7) Publicar snapshot en vivo (RTDB) manualmente
-export const refreshLive = onCall({ region: REGION }, async (req) => {
-  assertAdmin(req);
-  const { seasonId, matchdayNumber } = req.data || {};
-  if (!seasonId || !matchdayNumber) throw new Error("missing-fields");
-  const out = await publishLive(seasonId, Number(matchdayNumber));
-  return { ok: true, size: { picks: out.picks.length, matches: out.matches.length, leaderboard: out.leaderboard.length } };
-});
-
-// ===================================
-//  B) HTTP onRequest (público)
-// ===================================
-
-// 8) Foto pública de la jornada (JSON)
-export const publicSnapshot = onRequest({ region: REGION }, async (req, res) => {
-  try {
-    res.set("Access-Control-Allow-Origin", "*");
-    const seasonId = String(req.query.seasonId ?? "2025-26");
-    const md = Number(req.query.md ?? 1);
-    const out = await buildSnapshot(seasonId, md);
-    res.set("Cache-Control","public, max-age=30, s-maxage=30");
-    res.json({ seasonId, md, ...out });
-  } catch (e:any) {
-    console.error(e);
-    res.status(500).json({ error: e.message || "error" });
-  }
-});
-
-// 9) Resumen IA HTTP (markdown)
-export const matchdaySummary = onRequest({ region: REGION, secrets: [GEMINI_API_KEY] }, async (req, res) => {
-  try {
-    res.set("Access-Control-Allow-Origin", "*");
-    const seasonId = String(req.query.seasonId ?? "2025-26");
-    const md = Number(req.query.md ?? 1);
-
-    const [pSnap, mSnap, lSnap] = await Promise.all([
-      db.collection("picks").where("seasonId","==",seasonId).where("matchdayNumber","==",md).get(),
-      db.collection("matches").where("seasonId","==",seasonId).where("matchdayNumber","==",md).get(),
-      db.collection("leaderboards").where("seasonId","==",seasonId).get(),
-    ]);
-    const picks = pSnap.docs.map(d => d.data());
-    const matches = mSnap.docs.map(d => d.data());
-    const leader = lSnap.docs.map(d => d.data() as any).sort((a,b)=> Number(b.points)-Number(a.points)).slice(0,10);
-
-    const { GoogleGenerativeAI } = await import("@google/generative-ai");
-    const apiKey = GEMINI_API_KEY.value();
-    if (!apiKey) throw new Error("GEMINI_API_KEY not set");
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-
-    const prompt = [
-      `Eres el cronista de la porra ByZapa (LaLiga ${seasonId}).`,
-      `Genera un resumen de 100-130 palabras de la Jornada ${md}.`,
-      `Partidos: ${JSON.stringify(matches)}`,
-      `Picks: ${JSON.stringify(picks.map((p:any)=>({userId:p.userId, displayName:p.displayName, teamId:p.teamId})))}`,
-      `Top: ${JSON.stringify(leader.map((l:any)=>({displayName:l.displayName, points:l.points})))}`,
-      `Usa Markdown simple (título + viñetas). Español neutro.`
-    ].join("\n");
-
-    const out = await model.generateContent(prompt);
-    const text = out.response.text();
-    res.json({ seasonId, md, summary: text });
-  } catch (e:any) {
-    console.error(e);
-    res.status(500).json({ error: e.message || "error" });
-  }
-});
-
-// ===================================
-//  C) Triggers automáticos para "live"
-// ===================================
-
-function parseMdFromPickId(id: string, data: any) {
-  const parts = id.split("__");
-  if (parts.length === 3) return { seasonId: parts[1], md: Number(parts[2]) };
-  return { seasonId: data?.seasonId, md: Number(data?.matchdayNumber) };
-}
-function parseMdFromMatchId(id: string, data: any) {
-  const [seasonId, mdStr] = String(id).split("__");
-  const md = Number(mdStr);
-  return { seasonId, md };
-}
-
-export const liveOnPickWrite = onDocumentWritten(
-  { region: REGION, document: "picks/{pickId}" },
-  async (event) => {
-    const after = event.data?.after?.data();
-    const before = event.data?.before?.data();
-    const id = event.params.pickId as string;
-    const info = parseMdFromPickId(id, after || before);
-    if (!info.seasonId || !info.md) return;
-    await publishLive(info.seasonId, info.md);
-  }
-);
-
-export const liveOnMatchWrite = onDocumentWritten(
-  { region: REGION, document: "matches/{matchId}" },
-  async (event) => {
-    const id = event.params.matchId as string;
-    const data = event.data?.after?.data() || event.data?.before?.data();
-    const info = parseMdFromMatchId(id, data);
-    if (!info.seasonId || !info.md) return;
-    await publishLive(info.seasonId, info.md);
-  }
-);
+    await batch.commit();
+  });

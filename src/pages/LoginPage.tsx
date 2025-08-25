@@ -2,20 +2,14 @@
 import React, { useEffect, useState } from "react";
 import { auth, provider } from "../firebase";
 import {
-<<<<<<< HEAD
   signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
   setPersistence,
   browserLocalPersistence,
+  onAuthStateChanged,
 } from "firebase/auth";
 import { useLocation, useNavigate } from "react-router-dom";
-=======
-  signInWithPopup, signInWithRedirect, getRedirectResult,
-  setPersistence, browserLocalPersistence, onAuthStateChanged
-} from 'firebase/auth'
-import { useLocation, useNavigate } from 'react-router-dom'
->>>>>>> 496467e90d1421968c67b385a4ffa581addbbbcc
 
 const ua = navigator.userAgent || "";
 const inApp = /(FBAN|FBAV|Instagram|Line|WhatsApp|MicroMessenger)/i.test(ua);
@@ -27,25 +21,17 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-<<<<<<< HEAD
-    getRedirectResult(auth).then(() => {
-      const to = (location.state as any)?.from?.pathname || "/picks";
-      navigate(to, { replace: true });
-    }).catch(() => {
-      /* ignoramos si no viene de redirect */
-    }).finally(() => setLoading(false));
-  }, [navigate, location.state]);
-=======
-    const unsub = onAuthStateChanged(auth, user => {
+    const unsub = onAuthStateChanged(auth, (user) => {
       if (user) {
-        const to = (loc.state?.from?.pathname as string) || '/picks'
-        nav(to, { replace: true })
+        const to = (location.state as any)?.from?.pathname || "/picks";
+        navigate(to, { replace: true });
+      } else {
+        setLoading(false);
       }
-    })
-    getRedirectResult(auth).catch(() => {})
-    return unsub
-  }, [])
->>>>>>> 496467e90d1421968c67b385a4ffa581addbbbcc
+    });
+    getRedirectResult(auth).catch(() => {});
+    return () => unsub();
+  }, [navigate, location.state]);
 
   const login = async () => {
     setLoading(true);

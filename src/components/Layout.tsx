@@ -1,9 +1,9 @@
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, Outlet } from 'react-router-dom'
 import { signOut } from 'firebase/auth'
 import { auth } from '../firebase'
 import { useAuthCtx } from '../App'
 
-export default function Layout({ children }: { children: React.ReactNode }) {
+export default function Layout() {
   const { user, claims } = useAuthCtx()
   const loc = useLocation()
   return (
@@ -25,12 +25,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 Salir
               </button>
             ) : (
-              loc.pathname !== '/login' && <Link to="/login" className="rounded px-2 py-1 bg-emerald-700 hover:bg-emerald-600">Entrar</Link>
+              loc.pathname !== '/login' && (
+                <Link to="/login" className="rounded px-2 py-1 bg-emerald-700 hover:bg-emerald-600">Entrar</Link>
+              )
             )}
           </div>
         </nav>
       </header>
-      <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>
+      <main className="mx-auto max-w-6xl px-4 py-8"><Outlet /></main>
       <footer className="mt-12 border-t border-white/5 py-6 text-center text-xs opacity-60">
         © {new Date().getFullYear()} ByZapa — React + Vite + Tailwind + Firebase
       </footer>

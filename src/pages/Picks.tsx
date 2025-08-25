@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import { submitPickFn } from '../lib/functions';
+import { submitPickFn, auth } from '../firebase';
 import { useAppConfig } from '../lib/config';
 import { TEAMS_25_26 } from '../lib/teams';
-import { auth } from '../lib/firebase';
 
 export default function Picks() {
   const { seasonId, matchdayNumber } = useAppConfig();

@@ -16,7 +16,7 @@ const Diagnostics = lazy(() => import('./pages/Diagnostics'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const porrahime = lazy(() => import('./pages/porrahime'));  // Nombre en minús para match
 const byzapaonepage = lazy(() => import('./pages/byzapaonepage'));  // Nombre en minús
-const adminpage = lazy(() => import('./pages/adminpage'));  // Nombre en minús
+const adminpage = lazy(() => import('./pages/AdminPage'));
 
 function PrivateRoute({ children }) {
   const [user, setUser] = useState(null);

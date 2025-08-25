@@ -81,7 +81,7 @@ exports.setMatchdayStatus = onRequest(async (req, res) => {
 });
 
 // ================= Callable (desde cliente) =================
-exports.submitPick = onCall(async (request) => {
+exports.submitPick = onCall({ region: "us-central1" }, async (request) => {
   const uid = request?.auth?.uid || null;
   if (!uid) {
     const err = new Error("Debes iniciar sesión.");
